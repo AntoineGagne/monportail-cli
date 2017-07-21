@@ -79,7 +79,7 @@ userDetailsJsonString = "{ \
                        \ }"
 
 userDetails :: UserDetails
-userDetails = UserDetails { clientId = "6036900"
+userDetails = UserDetails { userId = "6036900"
                           , enaId = "6036900"
                           , portalUserType = "institutionnel"
                           , recordNumber = 6036900

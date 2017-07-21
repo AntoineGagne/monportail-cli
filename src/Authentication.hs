@@ -75,7 +75,7 @@ instance FromJSON TokenDetails where
         <*> value .: "scope"
         <*> value .: "identifiantUtilisateur"
 
-data UserDetails = UserDetails { clientId :: Text
+data UserDetails = UserDetails { userId :: Text
                                , enaId :: Text
                                , portalUserType :: Text
                                , recordNumber :: Integer
@@ -169,9 +169,9 @@ fetchCredentials user cookies =
                               , "vhost" := ("standard" :: Text)
                               ]
 
-parseLoginDetails :: Wreq.Response LazyByteString.ByteString -> Either AuthenticationError LoginDetails
+parseLoginDetails :: LazyByteString.ByteString -> Either AuthenticationError LoginDetails
 parseLoginDetails response = 
-    case Parser.parseLoginDetails (response ^. Wreq.responseBody) of
+    case Parser.parseLoginDetails response of
         Left error' -> Left $ InvalidCredentials (Just . show $ error')
         Right details -> decodeLoginDetails details
     where
