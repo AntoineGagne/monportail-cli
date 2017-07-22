@@ -174,9 +174,9 @@ parseLoginDetails response =
     case Parser.parseLoginDetails response of
         Left error' -> Left $ InvalidCredentials (Just . show $ error')
         Right details -> decodeLoginDetails details
-    where
-        decodeLoginDetails :: String -> Either AuthenticationError Authentication.LoginDetails
-        decodeLoginDetails responseBody = 
-            case Aeson.decode . Char8.pack . filter (/= '\\') $ responseBody of
-                Nothing -> Left $ ParseError (Just "Could not decode the login details.")
-                Just details -> Right details
+
+decodeLoginDetails :: String -> Either AuthenticationError Authentication.LoginDetails
+decodeLoginDetails responseBody = 
+    case Aeson.decode . Char8.pack . filter (/= '\\') $ responseBody of
+        Nothing -> Left $ ParseError (Just "Could not decode the login details.")
+        Just details -> Right details

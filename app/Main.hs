@@ -49,6 +49,7 @@ main = do
     manager <- HttpClient.newManager TlsHttpClient.tlsManagerSettings
     cookies <- Authentication.fetchAuthenticationCookies manager
     response <- Authentication.fetchCredentials user cookies
+    print response
     case Authentication.parseLoginDetails (response ^. Wreq.responseBody) of
         Left errors -> print errors
         Right loginDetails -> Calendar.fetchCalendarDetails manager loginDetails >>= print

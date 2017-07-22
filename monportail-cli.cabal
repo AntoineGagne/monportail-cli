@@ -36,6 +36,7 @@ library
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
                      , aeson
+                     , brick
                      , bytestring
                      , lens
                      , http-client
