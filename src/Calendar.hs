@@ -6,7 +6,8 @@ module Calendar ( Calendar (..)
                 , Event (..)
                 , Events (..)
                 , Communication (..)
-                , extractTime
+                , ULavalTime
+                , fromULavalTime
                 , toULavalTime
                 , fetchCalendarDetails
                 ) where
@@ -146,7 +147,7 @@ data Event = Event { eventCalendarId :: Text
                    , accessLevel :: Text
                    , changeNumber :: Integer
                    }
-                   deriving (Show)
+                   deriving (Eq, Show)
 
 instance FromJSON Event where
     parseJSON = Aeson.withObject "Event" $ \value -> Event
@@ -171,7 +172,7 @@ data Communication = Communication { code :: Text
                                    , visibleToOtherUsers :: Bool
                                    , publishable :: Bool
                                    }
-                                   deriving (Show)
+                                   deriving (Eq, Show)
 
 instance FromJSON Communication where
     parseJSON = Aeson.withObject "Communication" $ \value -> Communication
@@ -183,13 +184,13 @@ instance FromJSON Communication where
         <*> value .: "visibleAuxUtilisateurs"
         <*> value .: "publiable"
 
-newtype ULavalTime = ULavalTime Time.UTCTime
-    deriving (Show)
+newtype ULavalTime = ULavalTime Time.LocalTime
+    deriving (Eq, Ord, Show)
 
-extractTime :: ULavalTime -> Time.UTCTime
-extractTime (ULavalTime time) = time
+fromULavalTime :: ULavalTime -> Time.LocalTime
+fromULavalTime (ULavalTime time) = time
 
-toULavalTime :: Time.UTCTime -> ULavalTime
+toULavalTime :: Time.LocalTime -> ULavalTime
 toULavalTime = ULavalTime
 
 instance FromJSON ULavalTime where
