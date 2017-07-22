@@ -24,12 +24,14 @@ import Network.HTTP.Client ( CookieJar
                            )
 
 import qualified Data.Aeson as Aeson
-import qualified Data.ByteString.Lazy.Char8 as Char8
+import qualified Data.ByteString.Lazy.Char8 as LazyChar8
+import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as LazyByteString
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Encoding
 import qualified Data.Time as Time
+import qualified Data.Time.Format as TimeFormat
 import qualified Network.HTTP.Client as HttpClient
 import qualified Network.HTTP.Client.TLS as TlsHttpClient
 import qualified Network.Wreq as Wreq
@@ -64,6 +66,32 @@ fetchCalendarDetails manager loginDetails = do
         headers = [ ("Authorization", Encoding.encodeUtf8 . Authentication.token . Authentication.tokenDetails $ loginDetails)
                   , ("User-Agent", "monportail-cli/v0.1.0.0")
                   ]
+
+fetchEvents :: Manager -> Authentication.LoginDetails -> Calendar -> Time.LocalTime -> Time.LocalTime -> IO (Either CalendarError [Event])
+fetchEvents manager loginDetails calendar startingDate endingDate = do
+    baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
+    let request = baseRequest { method = "GET"
+                              , secure = True
+                              , requestHeaders = headers
+                              }
+    response <- HttpClient.httpLbs request manager
+    pure $ case Aeson.decode' (HttpClient.responseBody response) of
+        Nothing -> Left . UnexpectedResponse $ Just "Could not retrieve events."
+        Just events' -> Right . events $ events'
+    where
+        url = baseRoute ++ "/communication/v1/calendriers/evenements.v2"
+        queryParameter :: [(ByteString.ByteString, Maybe ByteString.ByteString)]
+        queryParameter = [ ("idutilisateurmpo", (Just . Encoding.encodeUtf8 . Authentication.userId . Authentication.userDetails) loginDetails)
+                         , ("idcalendrier", (Just . Encoding.encodeUtf8 . calendarId) calendar)
+                         , ("horodatedebut", (Just . formatTime) startingDate)
+                         , ("horodatefin", (Just . formatTime) endingDate)
+                         ]
+        headers = [ ("Authorization", Encoding.encodeUtf8 . Authentication.token . Authentication.tokenDetails $ loginDetails)
+                  , ("User-Agent", "monportail-cli/v0.1.0.0")
+                  ]
+
+formatTime :: Time.LocalTime -> ByteString.ByteString
+formatTime = Char8.pack . TimeFormat.formatTime TimeFormat.defaultTimeLocale "%FT%X.000Z"
 
 data Calendar = Calendar { calendarId :: Text
                          , clientId :: Text
@@ -107,7 +135,7 @@ instance FromJSON Events where
 
 data Event = Event { eventCalendarId :: Text
                    , clientId :: Text
-                   , calendarId :: Text
+                   , sourceCalendarId :: Text
                    , communication :: Communication
                    , labels :: [Aeson.Value]
                    , startingDate :: Maybe ULavalTime
