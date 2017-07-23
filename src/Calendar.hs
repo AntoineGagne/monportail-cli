@@ -78,7 +78,6 @@ fetchEvents manager loginDetails calendar startingDate endingDate = do
                               , requestHeaders = headers
                               }
     response <- HttpClient.httpLbs request manager
-    print (HttpClient.responseBody response)
     pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
         Left message -> Left . UnexpectedResponse $ Just ("Could not retrieve events. Failed with following errors: " ++ message)
         Right events' -> Right . events $ events'
