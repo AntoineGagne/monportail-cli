@@ -49,6 +49,7 @@ data CalendarError = UnexpectedResponse (Maybe String)
 baseRoute :: String
 baseRoute = "https://monportail.ulaval.ca"
 
+-- TODO: Refactor this module...
 fetchCalendarDetails :: Manager -> Authentication.LoginDetails -> IO (Either CalendarError Calendar)
 fetchCalendarDetails manager loginDetails = do
     baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
