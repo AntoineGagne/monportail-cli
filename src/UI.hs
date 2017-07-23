@@ -1,5 +1,5 @@
 module UI
-    (
+    ( displayEvents
     ) where
 
 import Brick.Widgets.Core ( (<+>)
