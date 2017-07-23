@@ -10,6 +10,7 @@ module Calendar ( Calendar (..)
                 , fromULavalTime
                 , toULavalTime
                 , fetchCalendarDetails
+                , fetchEvents
                 ) where
 
 import Data.Aeson ( FromJSON (..)
@@ -77,9 +78,10 @@ fetchEvents manager loginDetails calendar startingDate endingDate = do
                               , requestHeaders = headers
                               }
     response <- HttpClient.httpLbs request manager
-    pure $ case Aeson.decode' (HttpClient.responseBody response) of
-        Nothing -> Left . UnexpectedResponse $ Just "Could not retrieve events."
-        Just events' -> Right . events $ events'
+    print (HttpClient.responseBody response)
+    pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
+        Left message -> Left . UnexpectedResponse $ Just ("Could not retrieve events. Failed with following errors: " ++ message)
+        Right events' -> Right . events $ events'
     where
         url = baseRoute ++ "/communication/v1/calendriers/evenements.v2"
         queryParameter :: [(ByteString.ByteString, Maybe ByteString.ByteString)]
@@ -139,12 +141,13 @@ data Event = Event { eventCalendarId :: Text
                    , clientId :: Text
                    , sourceCalendarId :: Text
                    , communication :: Communication
+                   , correlationSource :: Maybe Aeson.Value
                    , labels :: [Aeson.Value]
                    , startingDate :: Maybe ULavalTime
                    , endingDate :: Maybe ULavalTime
                    , allDay :: Bool
                    , object :: Text
-                   , metadata :: Text
+                   , metadata :: Aeson.Value
                    , accessLevel :: Text
                    , changeNumber :: Integer
                    }
@@ -156,6 +159,7 @@ instance FromJSON Event where
         <*> value .: "idUtilisateurMpo"
         <*> value .: "idCalendrier"
         <*> value .: "communication"
+        <*> value .:? "infoCorrelationSource"
         <*> value .: "etiquettes"
         <*> value .: "horodateDebut"
         <*> value .: "horodateFin"
@@ -196,4 +200,4 @@ toULavalTime = ULavalTime
 
 instance FromJSON ULavalTime where
     parseJSON = Aeson.withText "Time" $ \time -> ULavalTime
-        <$> Time.parseTimeM True Time.defaultTimeLocale "%FT%X-04:00[America/New_York]" (Text.unpack time)
+        <$> Time.parseTimeM True Time.defaultTimeLocale "%FT%X%Z" (take 19 . Text.unpack $ time)
