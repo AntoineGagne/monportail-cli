@@ -19,6 +19,7 @@ executable monportail-cli
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
                      , aeson
+                     , brick
                      , bytestring
                      , lens
                      , http-client
@@ -26,7 +27,9 @@ executable monportail-cli
                      , monportail-cli
                      , parsec
                      , text
+                     , time
                      , wreq
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
 
 library
   hs-source-dirs:      src
@@ -47,6 +50,7 @@ library
                      , text
                      , time
                      , wreq
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
 
 test-suite monportail-cli-test
   type:                exitcode-stdio-1.0
