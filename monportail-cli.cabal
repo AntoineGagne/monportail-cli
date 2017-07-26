@@ -50,7 +50,6 @@ library
                      , text
                      , time
                      , wreq
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
 
 test-suite monportail-cli-test
   type:                exitcode-stdio-1.0
