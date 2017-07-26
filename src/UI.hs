@@ -14,6 +14,7 @@ import qualified Brick
 import qualified Brick.Widgets.Core as Core
 import qualified Brick.Widgets.Border as Border
 import qualified Brick.Widgets.Border.Style as BorderStyle
+import qualified Brick.Types as BrickTypes
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Maybe as Maybe
@@ -39,11 +40,11 @@ displayEvents events = let (eventsByStartingDate, eventsLongerThanOneDay) = sort
                                               <=> Core.vBox (map buildEventWidget events')
           buildEventsLongerThanOneDayWidget events' = Border.hBorderWithLabel (Core.txt " Others ")
                                                    <=> Core.vBox (map buildEventLongerThanOneDayWidget events')
-          buildEventLongerThanOneDayWidget event' = Core.txt ( (Text.pack . show . eventDate Calendar.startingDate) event' <> " – " <> (Text.pack . show . eventDate Calendar.endingDate) event')
-                                                 <+> Core.txtWrap (Calendar.object event')
+          buildEventLongerThanOneDayWidget event' = padBox (Core.txt ( (Text.pack . show . eventDate Calendar.startingDate) event' <> " – " <> (Text.pack . show . eventDate Calendar.endingDate) event')
+                                                                    <+> Core.padLeft (BrickTypes.Pad 4) (Core.txtWrap (Calendar.object event')))
 
 buildEventWidget :: Calendar.Event -> Brick.Widget n
-buildEventWidget event = Core.txt (formatEventTime event) <+> Core.txtWrap (Calendar.object event)
+buildEventWidget event = padBox (Core.txt (formatEventTime event) <+> Core.padLeft (BrickTypes.Pad 4) (Core.txtWrap (Calendar.object event)))
     where
         formatEventTime event
             | Calendar.allDay event = "All day"
@@ -61,3 +62,6 @@ sortEvents events = (eventsByStartingDate, eventsLongerThanOneDay)
 
 eventDate :: (Calendar.Event -> Maybe Calendar.ULavalTime) -> Calendar.Event -> Time.Day
 eventDate accessor event = Maybe.fromJust $ Time.localDay . Calendar.fromULavalTime <$> accessor event
+
+padBox :: Brick.Widget n -> Brick.Widget n
+padBox = Core.padTop (BrickTypes.Pad 1) . Core.padLeftRight 2
