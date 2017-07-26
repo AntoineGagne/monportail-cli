@@ -51,6 +51,7 @@ withEcho echo action = do
     old <- hGetEcho stdin
     bracket_ (hSetEcho stdin echo) (hSetEcho stdin old) action
 
+-- TODO: Add real main control loop
 main :: IO ()
 main = do
     user <- Authentication.User <$> getUsername <*> getPassword
