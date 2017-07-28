@@ -7,12 +7,17 @@ module Calendar ( Calendar (..)
                 , Events (..)
                 , Communication (..)
                 , ULavalTime
+                , CalendarError (..)
                 , fromULavalTime
                 , toULavalTime
                 , fetchCalendarDetails
                 , fetchEvents
                 ) where
 
+import Control.Monad.Except ( ExceptT (..)
+                            , throwError
+                            , liftIO
+                            )
 import Data.Aeson ( FromJSON (..)
                   , ToJSON (..)
                   , (.:)
@@ -50,9 +55,12 @@ data CalendarError = UnexpectedResponse (Maybe String)
 baseRoute :: String
 baseRoute = "https://monportail.ulaval.ca"
 
+fetchCalendarDetails :: Manager -> Authentication.LoginDetails -> ExceptT CalendarError IO Calendar
+fetchCalendarDetails manager loginDetails = either throwError pure =<< liftIO (fetchCalendarDetails' manager loginDetails)
+
 -- TODO: Refactor this module...
-fetchCalendarDetails :: Manager -> Authentication.LoginDetails -> IO (Either CalendarError Calendar)
-fetchCalendarDetails manager loginDetails = do
+fetchCalendarDetails' :: Manager -> Authentication.LoginDetails -> IO (Either CalendarError Calendar)
+fetchCalendarDetails' manager loginDetails = do
     baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
     let request = baseRequest { method = "GET"
                               , secure = True
@@ -70,8 +78,16 @@ fetchCalendarDetails manager loginDetails = do
                   , ("User-Agent", "monportail-cli/v0.1.0.0")
                   ]
 
-fetchEvents :: Manager -> Authentication.LoginDetails -> Calendar -> Time.LocalTime -> Time.LocalTime -> IO (Either CalendarError [Event])
-fetchEvents manager loginDetails calendar startingDate endingDate = do
+fetchEvents :: Manager -> Authentication.LoginDetails -> Calendar -> Time.LocalTime -> Time.LocalTime -> ExceptT CalendarError IO [Event]
+fetchEvents manager loginDetails calendar startingDate endingDate = either throwError pure =<< liftIO (fetchEvents' manager loginDetails calendar startingDate endingDate)
+
+fetchEvents' :: Manager
+             -> Authentication.LoginDetails
+             -> Calendar
+             -> Time.LocalTime
+             -> Time.LocalTime
+             -> IO (Either CalendarError [Event])
+fetchEvents' manager loginDetails calendar startingDate endingDate = do
     baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
     let request = baseRequest { method = "GET"
                               , secure = True
