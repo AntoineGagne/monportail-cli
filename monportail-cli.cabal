@@ -25,6 +25,7 @@ executable monportail-cli
                      , http-client
                      , http-client-tls
                      , monportail-cli
+                     , mtl
                      , parsec
                      , text
                      , time
@@ -46,6 +47,7 @@ library
                      , lens
                      , http-client
                      , http-client-tls
+                     , mtl
                      , parsec
                      , text
                      , time
