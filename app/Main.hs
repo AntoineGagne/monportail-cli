@@ -16,6 +16,7 @@ import System.IO ( hFlush
 import Control.Lens ( (^.) )
 import Control.Monad.Except ( ExceptT (..)
                             , runExceptT
+                            , liftIO
                             )
 import Network.HTTP.Client ( Manager )
 
@@ -64,7 +65,7 @@ main = do
     timezone <- Time.getCurrentTimeZone
     let localTime = Time.utcToLocalTime timezone currentTime
         endingTime = (Time.utcToLocalTime timezone . Time.addUTCTime diffTime) currentTime
-    either pure pure =<< runExceptT (runMain manager user localTime endingTime)
+    either print pure =<< runExceptT (runMain manager user localTime endingTime)
     where
         diffTime :: Time.NominalDiffTime
         diffTime = 10368000
@@ -78,4 +79,4 @@ runMain manager user localTime endingTime = do
     (loginDetails, cookies') <- Authentication.getCredentials user manager
     calendar <- Calendar.fetchCalendarDetails manager loginDetails
     events <- Calendar.fetchEvents manager loginDetails calendar localTime endingTime
-    BrickMain.simpleMain (UI.displayEvents events :: Brick.Widget Text.Text)
+    liftIO $ BrickMain.simpleMain (UI.displayEvents events :: Brick.Widget Text.Text)
