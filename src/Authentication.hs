@@ -7,6 +7,8 @@ module Authentication ( LoginDetails (..)
                       , Sex (..)
                       , User (..)
                       , AuthenticationError (..)
+                      , getCredentials
+                      , getCredentials'
                       , fetchAuthenticationCookies
                       , fetchCredentials
                       , parseLoginDetails
@@ -18,6 +20,10 @@ import Data.Aeson ( FromJSON (..)
                   )
 import Data.Text ( Text )
 import Control.Lens ( (^.) )
+import Control.Monad.Except ( ExceptT (..)
+                            , liftIO
+                            , throwError
+                            )
 import Network.HTTP.Client ( CookieJar
                            , Manager
                            , Response
@@ -169,13 +175,27 @@ fetchCredentials user cookies =
                               , "vhost" := ("standard" :: Text)
                               ]
 
+getCredentials :: User -> Manager -> ExceptT AuthenticationError IO Credentials
+getCredentials user manager = either throwError pure =<< liftIO (getCredentials' user manager)
+
+getCredentials' :: User -> Manager -> IO (Either AuthenticationError Credentials)
+getCredentials' user manager = do
+    cookies <- fetchAuthenticationCookies manager
+    response <- fetchCredentials user cookies
+    print $ response ^. Wreq.responseCookieJar
+    pure $ case parseLoginDetails (response ^. Wreq.responseBody) of
+        Left errors -> Left errors
+        Right loginDetails -> Right (loginDetails, response ^. Wreq.responseCookieJar)
+
+type Credentials = (LoginDetails, CookieJar)
+
 parseLoginDetails :: LazyByteString.ByteString -> Either AuthenticationError LoginDetails
 parseLoginDetails response = 
     case Parser.parseLoginDetails response of
         Left error' -> Left $ InvalidCredentials (Just . show $ error')
         Right details -> decodeLoginDetails details
 
-decodeLoginDetails :: String -> Either AuthenticationError Authentication.LoginDetails
+decodeLoginDetails :: String -> Either AuthenticationError LoginDetails
 decodeLoginDetails responseBody = 
     case Aeson.decode . Char8.pack . filter (/= '\\') $ responseBody of
         Nothing -> Left $ ParseError (Just "Could not decode the login details.")
