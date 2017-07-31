@@ -36,6 +36,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Authentication
                      , Calendar
+                     , Exceptions
                      , Parser
                      , UI
   default-language:    Haskell2010

@@ -6,7 +6,6 @@ module Authentication ( LoginDetails (..)
                       , TokenDetails (..)
                       , Sex (..)
                       , User (..)
-                      , AuthenticationError (..)
                       , getCredentials
                       , getCredentials'
                       , fetchAuthenticationCookies
@@ -44,6 +43,7 @@ import qualified Network.Wreq as Wreq
 import qualified Network.Wreq.Session as WreqSession
 import qualified Network.Wreq.Types as WreqTypes
 
+import qualified Exceptions
 import qualified Parser
 
 
@@ -175,28 +175,27 @@ fetchCredentials user cookies =
                               , "vhost" := ("standard" :: Text)
                               ]
 
-getCredentials :: User -> Manager -> ExceptT AuthenticationError IO Credentials
+getCredentials :: User -> Manager -> ExceptT Exceptions.MonPortailException IO Credentials
 getCredentials user manager = either throwError pure =<< liftIO (getCredentials' user manager)
 
-getCredentials' :: User -> Manager -> IO (Either AuthenticationError Credentials)
+getCredentials' :: User -> Manager -> IO (Either Exceptions.MonPortailException Credentials)
 getCredentials' user manager = do
     cookies <- fetchAuthenticationCookies manager
     response <- fetchCredentials user cookies
-    print $ response ^. Wreq.responseCookieJar
     pure $ case parseLoginDetails (response ^. Wreq.responseBody) of
         Left errors -> Left errors
         Right loginDetails -> Right (loginDetails, response ^. Wreq.responseCookieJar)
 
 type Credentials = (LoginDetails, CookieJar)
 
-parseLoginDetails :: LazyByteString.ByteString -> Either AuthenticationError LoginDetails
+parseLoginDetails :: LazyByteString.ByteString -> Either Exceptions.MonPortailException LoginDetails
 parseLoginDetails response = 
     case Parser.parseLoginDetails response of
-        Left error' -> Left $ InvalidCredentials (Just . show $ error')
+        Left error' -> Left $ Exceptions.throwInvalidCredentialsError (Just . show $ error')
         Right details -> decodeLoginDetails details
 
-decodeLoginDetails :: String -> Either AuthenticationError LoginDetails
+decodeLoginDetails :: String -> Either Exceptions.MonPortailException LoginDetails
 decodeLoginDetails responseBody = 
     case Aeson.decode . Char8.pack . filter (/= '\\') $ responseBody of
-        Nothing -> Left $ ParseError (Just "Could not decode the login details.")
+        Nothing -> Left $ Exceptions.ParseError (Just "Could not decode the login details.")
         Just details -> Right details
