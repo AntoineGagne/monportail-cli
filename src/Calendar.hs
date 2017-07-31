@@ -7,7 +7,6 @@ module Calendar ( Calendar (..)
                 , Events (..)
                 , Communication (..)
                 , ULavalTime
-                , CalendarError (..)
                 , fromULavalTime
                 , toULavalTime
                 , fetchCalendarDetails
@@ -46,20 +45,21 @@ import qualified Network.Wreq.Session as WreqSession
 import qualified Network.Wreq.Types as WreqTypes
 
 import qualified Authentication
-
-
-data CalendarError = UnexpectedResponse (Maybe String)
-    deriving (Show)
+import qualified Exceptions
 
 
 baseRoute :: String
 baseRoute = "https://monportail.ulaval.ca"
 
-fetchCalendarDetails :: Manager -> Authentication.LoginDetails -> ExceptT CalendarError IO Calendar
+fetchCalendarDetails :: Manager
+                     -> Authentication.LoginDetails
+                     -> ExceptT Exceptions.MonPortailException IO Calendar
 fetchCalendarDetails manager loginDetails = either throwError pure =<< liftIO (fetchCalendarDetails' manager loginDetails)
 
 -- TODO: Refactor this module...
-fetchCalendarDetails' :: Manager -> Authentication.LoginDetails -> IO (Either CalendarError Calendar)
+fetchCalendarDetails' :: Manager
+                      -> Authentication.LoginDetails
+                      -> IO (Either Exceptions.MonPortailException Calendar)
 fetchCalendarDetails' manager loginDetails = do
     baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
     let request = baseRequest { method = "GET"
@@ -68,7 +68,7 @@ fetchCalendarDetails' manager loginDetails = do
                               }
     response <- HttpClient.httpLbs request manager
     pure $ case Aeson.decode' (HttpClient.responseBody response) of
-        Nothing -> Left . UnexpectedResponse $ Just "Could not retrieve calendar details."
+        Nothing -> Left . Exceptions.throwUnexpectedResponseError $ Just "Could not retrieve calendar details."
         Just calendar -> Right calendar
     where
         url = baseRoute ++ "/communication/v1/calendriers/operationnel"
@@ -78,7 +78,12 @@ fetchCalendarDetails' manager loginDetails = do
                   , ("User-Agent", "monportail-cli/v0.1.0.0")
                   ]
 
-fetchEvents :: Manager -> Authentication.LoginDetails -> Calendar -> Time.LocalTime -> Time.LocalTime -> ExceptT CalendarError IO [Event]
+fetchEvents :: Manager
+            -> Authentication.LoginDetails
+            -> Calendar
+            -> Time.LocalTime
+            -> Time.LocalTime
+            -> ExceptT Exceptions.MonPortailException IO [Event]
 fetchEvents manager loginDetails calendar startingDate endingDate = either throwError pure =<< liftIO (fetchEvents' manager loginDetails calendar startingDate endingDate)
 
 fetchEvents' :: Manager
@@ -86,7 +91,7 @@ fetchEvents' :: Manager
              -> Calendar
              -> Time.LocalTime
              -> Time.LocalTime
-             -> IO (Either CalendarError [Event])
+             -> IO (Either Exceptions.MonPortailException [Event])
 fetchEvents' manager loginDetails calendar startingDate endingDate = do
     baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
     let request = baseRequest { method = "GET"
@@ -95,7 +100,7 @@ fetchEvents' manager loginDetails calendar startingDate endingDate = do
                               }
     response <- HttpClient.httpLbs request manager
     pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
-        Left message -> Left . UnexpectedResponse $ Just ("Could not retrieve events. Failed with following errors: " ++ message)
+        Left message -> Left . Exceptions.throwUnexpectedResponseError $ Just ("Could not retrieve events. Failed with following errors: " ++ message)
         Right events' -> Right . events $ events'
     where
         url = baseRoute ++ "/communication/v1/calendriers/evenements.v2"
