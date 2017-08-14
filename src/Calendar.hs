@@ -9,6 +9,7 @@ module Calendar ( Calendar (..)
                 , fromULavalTime
                 , toULavalTime
                 , fetchCalendarDetails
+                , fetchCurrentCalendars
                 , fetchEvents
                 , sortEvents
                 , eventDate
@@ -123,8 +124,58 @@ createBaseRequest loginDetails queryParameters url = do
                   , ("User-Agent", "monportail-cli/v0.1.0")
                   ]
 
+fetchCurrentCalendars
+    :: Manager
+    -> Authentication.LoginDetails
+    -> ExceptT Exceptions.MonPortailException IO [Calendar]
+fetchCurrentCalendars manager loginDetails =
+    either throwError pure =<< liftIO (fetchCurrentCalendars' manager loginDetails )
+
+fetchCurrentCalendars'
+    :: Manager
+    -> Authentication.LoginDetails
+    -> IO (Either Exceptions.MonPortailException [Calendar])
+fetchCurrentCalendars' manager loginDetails = do
+    request <- createBaseRequest loginDetails [] url
+    response <- HttpClient.httpLbs request manager
+    pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
+        Left message -> Left . Exceptions.throwUnexpectedResponseError $ Just ("Could not retrieve current calendars. Failed with following errors: " ++ message)
+        Right currentCalendar -> Right . concatenateCalendars $ currentCalendar
+    where
+        url = baseRoute ++ "/communication/v1/calendriers/courants/" ++ userId'
+        userId' = Text.unpack . Authentication.userId . Authentication.userDetails $ loginDetails
+        concatenateCalendars currentCalendar' = generalCalendars currentCalendar' ++ concatMap calendars (sessionCalendars currentCalendar')
+
 formatTime :: Time.LocalTime -> ByteString.ByteString
 formatTime = Char8.pack . TimeFormat.formatTime TimeFormat.defaultTimeLocale "%FT%X.000Z"
+
+data CurrentCalendar = CurrentCalendar { clientId :: Text
+                                       , generalCalendars :: [Calendar]
+                                       , sessionCalendars :: [SessionCalendar]
+                                       } deriving (Show, Eq)
+
+instance FromJSON CurrentCalendar where
+    parseJSON = Aeson.withObject "CurrentCalendar" $ \value -> CurrentCalendar
+        <$> value .: "idUtilisateurMpo"
+        <*> value .: "calendriersGeneraux"
+        <*> value .: "calendriersSession"
+
+data SessionCalendar = SessionCalendar { sessionCode :: Text
+                                       , season :: Text
+                                       , civilYear :: Integer
+                                       , currentSession :: Bool
+                                       , nextSession :: Bool
+                                       , calendars :: [Calendar]
+                                       } deriving (Show, Eq)
+
+instance FromJSON SessionCalendar where
+    parseJSON = Aeson.withObject "SessionCalendar" $ \value -> SessionCalendar
+        <$> value .: "codeSession"
+        <*> value .: "saisonUniversitaire"
+        <*> value .: "anneeCivile"
+        <*> value .: "sessionCourante"
+        <*> value .: "sessionSuivante"
+        <*> value .: "calendriers"
 
 data Calendar = Calendar { calendarId :: Text
                          , clientId :: Text
@@ -132,7 +183,7 @@ data Calendar = Calendar { calendarId :: Text
                          , name :: Text
                          , metadata :: Aeson.Value
                          , accessLevel :: Text
-                         , changeNumber :: Integer
+                         , changeNumber :: Maybe Integer
                          , informationCorrelationSource :: Maybe Aeson.Value
                          }
                          deriving (Show, Eq)
@@ -145,7 +196,7 @@ instance FromJSON Calendar where
         <*> value .: "nom"
         <*> value .: "metadonnees"
         <*> value .: "niveauAccesEffectif"
-        <*> value .: "numeroChangement"
+        <*> value .:? "numeroChangement"
         <*> value .:? "infoCorrelationSource"
 
 newtype Events = Events { events :: [Event]

@@ -64,4 +64,4 @@ fromShowable :: Show s => s -> Text.Text
 fromShowable = Text.pack . show
 
 padBox :: Brick.Widget n -> Brick.Widget n
-padBox = Core.padTop (BrickTypes.Pad 1) . Core.padLeftRight 2
+padBox = Core.padBottom (BrickTypes.Pad 1) . Core.padLeftRight 2
