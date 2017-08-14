@@ -14,6 +14,11 @@ import System.IO ( hFlush
                  )
 
 import Control.Lens ( (^.) )
+import Control.Monad.Except ( ExceptT (..)
+                            , runExceptT
+                            , liftIO
+                            )
+import Network.HTTP.Client ( Manager )
 
 import qualified Data.Aeson as Aeson
 import qualified Brick
@@ -28,6 +33,7 @@ import qualified Network.Wreq as Wreq
 
 import qualified Authentication
 import qualified Calendar
+import qualified Exceptions
 import qualified Parser
 import qualified UI
 
@@ -51,27 +57,32 @@ withEcho echo action = do
     old <- hGetEcho stdin
     bracket_ (hSetEcho stdin echo) (hSetEcho stdin old) action
 
+-- TODO: Add real main control loop
 main :: IO ()
 main = do
     user <- Authentication.User <$> getUsername <*> getPassword
     manager <- HttpClient.newManager TlsHttpClient.tlsManagerSettings
-    cookies <- Authentication.fetchAuthenticationCookies manager
-    response <- Authentication.fetchCredentials user cookies
     currentTime <- Clock.getCurrentTime
     timezone <- Time.getCurrentTimeZone
     let localTime = Time.utcToLocalTime timezone currentTime
         endingTime = (Time.utcToLocalTime timezone . Time.addUTCTime diffTime) currentTime
-    case Authentication.parseLoginDetails (response ^. Wreq.responseBody) of
-        Left errors -> print errors
-        Right loginDetails -> do
-            calendar <- Calendar.fetchCalendarDetails manager loginDetails
-            case calendar of
-              Left errors' -> print errors'
-              Right calendarDetails -> do
-                  events <- Calendar.fetchEvents manager loginDetails calendarDetails localTime endingTime
-                  case events of
-                      Left errors'' -> print errors''
-                      Right events' -> BrickMain.simpleMain (UI.displayEvents events' :: Brick.Widget Text.Text)
+    either print pure =<< runExceptT (runMain manager user localTime endingTime)
     where
         diffTime :: Time.NominalDiffTime
         diffTime = 10368000
+
+runMain
+    :: Manager
+    -> Authentication.User
+    -> Time.LocalTime
+    -> Time.LocalTime
+    -> ExceptT Exceptions.MonPortailException IO ()
+runMain manager user localTime endingTime = do
+    (loginDetails, cookies') <- Authentication.getCredentials user manager
+    calendars <- (:) <$> Calendar.fetchCalendarDetails manager loginDetails
+                     <*> Calendar.fetchCurrentCalendars manager loginDetails
+    events <- concat <$> mapM (fetchCalendars loginDetails) calendars
+    liftIO $ BrickMain.simpleMain (UI.displayEvents events :: Brick.Widget Text.Text)
+        where
+            fetchCalendars loginDetails calendar = 
+                Calendar.fetchEvents manager loginDetails calendar localTime endingTime

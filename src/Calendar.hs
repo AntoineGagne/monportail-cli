@@ -2,7 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Calendar ( Calendar (..)
-                , Metadata (..)
                 , Event (..)
                 , Events (..)
                 , Communication (..)
@@ -10,9 +9,16 @@ module Calendar ( Calendar (..)
                 , fromULavalTime
                 , toULavalTime
                 , fetchCalendarDetails
+                , fetchCurrentCalendars
                 , fetchEvents
+                , sortEvents
+                , eventDate
                 ) where
 
+import Control.Monad.Except ( ExceptT (..)
+                            , throwError
+                            , liftIO
+                            )
 import Data.Aeson ( FromJSON (..)
                   , ToJSON (..)
                   , (.:)
@@ -30,6 +36,9 @@ import qualified Data.ByteString.Lazy.Char8 as LazyChar8
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as LazyByteString
+import qualified Data.List as List
+import qualified Data.Map.Strict as Map
+import qualified Data.Maybe as Maybe
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Encoding
 import qualified Data.Time as Time
@@ -41,45 +50,54 @@ import qualified Network.Wreq.Session as WreqSession
 import qualified Network.Wreq.Types as WreqTypes
 
 import qualified Authentication
-
-
-data CalendarError = UnexpectedResponse (Maybe String)
-    deriving (Show)
+import qualified Exceptions
 
 
 baseRoute :: String
 baseRoute = "https://monportail.ulaval.ca"
 
--- TODO: Refactor this module...
-fetchCalendarDetails :: Manager -> Authentication.LoginDetails -> IO (Either CalendarError Calendar)
-fetchCalendarDetails manager loginDetails = do
-    baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
-    let request = baseRequest { method = "GET"
-                              , secure = True
-                              , requestHeaders = headers
-                              }
+fetchCalendarDetails
+    :: Manager
+    -> Authentication.LoginDetails
+    -> ExceptT Exceptions.MonPortailException IO Calendar
+fetchCalendarDetails manager loginDetails = either throwError pure =<< liftIO (fetchCalendarDetails' manager loginDetails)
+
+fetchCalendarDetails'
+    :: Manager
+    -> Authentication.LoginDetails
+    -> IO (Either Exceptions.MonPortailException Calendar)
+fetchCalendarDetails' manager loginDetails = do
+    request <- createBaseRequest loginDetails queryParameter url
     response <- HttpClient.httpLbs request manager
-    pure $ case Aeson.decode' (HttpClient.responseBody response) of
-        Nothing -> Left . UnexpectedResponse $ Just "Could not retrieve calendar details."
-        Just calendar -> Right calendar
+    pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
+        Left message -> Left . Exceptions.throwUnexpectedResponseError $ Just ("Could not retrieve calendar details. Failed with following errors: " ++ message)
+        Right calendar -> Right calendar
     where
         url = baseRoute ++ "/communication/v1/calendriers/operationnel"
         queryParameter :: [(ByteString.ByteString, Maybe ByteString.ByteString)]
         queryParameter = [("idutilisateurmpo", Just $ (Encoding.encodeUtf8 . Authentication.userId . Authentication.userDetails) loginDetails)]
-        headers = [ ("Authorization", Encoding.encodeUtf8 . Authentication.token . Authentication.tokenDetails $ loginDetails)
-                  , ("User-Agent", "monportail-cli/v0.1.0.0")
-                  ]
 
-fetchEvents :: Manager -> Authentication.LoginDetails -> Calendar -> Time.LocalTime -> Time.LocalTime -> IO (Either CalendarError [Event])
-fetchEvents manager loginDetails calendar startingDate endingDate = do
-    baseRequest <- HttpClient.setQueryString queryParameter <$> HttpClient.parseRequest url
-    let request = baseRequest { method = "GET"
-                              , secure = True
-                              , requestHeaders = headers
-                              }
+fetchEvents
+    :: Manager
+    -> Authentication.LoginDetails
+    -> Calendar
+    -> Time.LocalTime
+    -> Time.LocalTime
+    -> ExceptT Exceptions.MonPortailException IO [Event]
+fetchEvents manager loginDetails calendar startingDate endingDate = either throwError pure =<< liftIO (fetchEvents' manager loginDetails calendar startingDate endingDate)
+
+fetchEvents' 
+    :: Manager
+    -> Authentication.LoginDetails
+    -> Calendar
+    -> Time.LocalTime
+    -> Time.LocalTime
+    -> IO (Either Exceptions.MonPortailException [Event])
+fetchEvents' manager loginDetails calendar startingDate endingDate = do
+    request <- createBaseRequest loginDetails queryParameter url
     response <- HttpClient.httpLbs request manager
     pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
-        Left message -> Left . UnexpectedResponse $ Just ("Could not retrieve events. Failed with following errors: " ++ message)
+        Left message -> Left . Exceptions.throwUnexpectedResponseError $ Just ("Could not retrieve events. Failed with following errors: " ++ message)
         Right events' -> Right . events $ events'
     where
         url = baseRoute ++ "/communication/v1/calendriers/evenements.v2"
@@ -89,20 +107,84 @@ fetchEvents manager loginDetails calendar startingDate endingDate = do
                          , ("horodatedebut", (Just . formatTime) startingDate)
                          , ("horodatefin", (Just . formatTime) endingDate)
                          ]
+
+createBaseRequest
+    :: Authentication.LoginDetails
+    -> [(ByteString.ByteString, Maybe ByteString.ByteString)]
+    -> String
+    -> IO Request
+createBaseRequest loginDetails queryParameters url = do
+    baseRequest <- HttpClient.setQueryString queryParameters <$> HttpClient.parseRequest url
+    pure $ baseRequest { method = "GET"
+                       , secure = True
+                       , requestHeaders = headers
+                       }
+    where
         headers = [ ("Authorization", Encoding.encodeUtf8 . Authentication.token . Authentication.tokenDetails $ loginDetails)
-                  , ("User-Agent", "monportail-cli/v0.1.0.0")
+                  , ("User-Agent", "monportail-cli/v0.1.0")
                   ]
+
+fetchCurrentCalendars
+    :: Manager
+    -> Authentication.LoginDetails
+    -> ExceptT Exceptions.MonPortailException IO [Calendar]
+fetchCurrentCalendars manager loginDetails =
+    either throwError pure =<< liftIO (fetchCurrentCalendars' manager loginDetails )
+
+fetchCurrentCalendars'
+    :: Manager
+    -> Authentication.LoginDetails
+    -> IO (Either Exceptions.MonPortailException [Calendar])
+fetchCurrentCalendars' manager loginDetails = do
+    request <- createBaseRequest loginDetails [] url
+    response <- HttpClient.httpLbs request manager
+    pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
+        Left message -> Left . Exceptions.throwUnexpectedResponseError $ Just ("Could not retrieve current calendars. Failed with following errors: " ++ message)
+        Right currentCalendar -> Right . concatenateCalendars $ currentCalendar
+    where
+        url = baseRoute ++ "/communication/v1/calendriers/courants/" ++ userId'
+        userId' = Text.unpack . Authentication.userId . Authentication.userDetails $ loginDetails
+        concatenateCalendars currentCalendar' = generalCalendars currentCalendar' ++ concatMap calendars (sessionCalendars currentCalendar')
 
 formatTime :: Time.LocalTime -> ByteString.ByteString
 formatTime = Char8.pack . TimeFormat.formatTime TimeFormat.defaultTimeLocale "%FT%X.000Z"
+
+data CurrentCalendar = CurrentCalendar { clientId :: Text
+                                       , generalCalendars :: [Calendar]
+                                       , sessionCalendars :: [SessionCalendar]
+                                       } deriving (Show, Eq)
+
+instance FromJSON CurrentCalendar where
+    parseJSON = Aeson.withObject "CurrentCalendar" $ \value -> CurrentCalendar
+        <$> value .: "idUtilisateurMpo"
+        <*> value .: "calendriersGeneraux"
+        <*> value .: "calendriersSession"
+
+data SessionCalendar = SessionCalendar { sessionCode :: Text
+                                       , season :: Text
+                                       , civilYear :: Integer
+                                       , currentSession :: Bool
+                                       , nextSession :: Bool
+                                       , calendars :: [Calendar]
+                                       } deriving (Show, Eq)
+
+instance FromJSON SessionCalendar where
+    parseJSON = Aeson.withObject "SessionCalendar" $ \value -> SessionCalendar
+        <$> value .: "codeSession"
+        <*> value .: "saisonUniversitaire"
+        <*> value .: "anneeCivile"
+        <*> value .: "sessionCourante"
+        <*> value .: "sessionSuivante"
+        <*> value .: "calendriers"
 
 data Calendar = Calendar { calendarId :: Text
                          , clientId :: Text
                          , calendarType :: Text
                          , name :: Text
-                         , metadata :: Metadata
+                         , metadata :: Aeson.Value
                          , accessLevel :: Text
-                         , changeNumber :: Integer
+                         , changeNumber :: Maybe Integer
+                         , informationCorrelationSource :: Maybe Aeson.Value
                          }
                          deriving (Show, Eq)
 
@@ -114,19 +196,8 @@ instance FromJSON Calendar where
         <*> value .: "nom"
         <*> value .: "metadonnees"
         <*> value .: "niveauAccesEffectif"
-        <*> value .: "numeroChangement"
-
-data Metadata = Metadata { sessionId :: Maybe Text
-                         , occurenceNumber :: Maybe Text
-                         , sessionCode :: Maybe Text
-                         }
-                         deriving (Show, Eq)
-
-instance FromJSON Metadata where
-    parseJSON = Aeson.withObject "Metadata" $ \value -> Metadata
-        <$> value .:? "idSectionCours"
-        <*> value .:? "numeroOccurence"
-        <*> value .:? "codeSession"
+        <*> value .:? "numeroChangement"
+        <*> value .:? "infoCorrelationSource"
 
 newtype Events = Events { events :: [Event]
                         }
@@ -200,3 +271,15 @@ toULavalTime = ULavalTime
 instance FromJSON ULavalTime where
     parseJSON = Aeson.withText "Time" $ \time -> ULavalTime
         <$> Time.parseTimeM True Time.defaultTimeLocale "%FT%X%Z" (take 19 . Text.unpack $ time)
+
+sortEvents :: [Calendar.Event] -> (Map.Map Time.Day [Calendar.Event], [Calendar.Event])
+sortEvents events = (eventsByStartingDate, eventsLongerThanOneDay)
+    where eventsByStartingDate = List.foldl' (\m event -> Map.insertWith (++) (eventStartingDate event) (pure event) m) Map.empty filteredEvents
+          filteredEvents = List.sortOn Calendar.startingDate $ filter (compareEventDates (==)) events
+          eventsLongerThanOneDay = filter (compareEventDates (/=)) events
+          compareEventDates compare event = compare (eventStartingDate event) (eventEndingDate event)
+          eventStartingDate = eventDate Calendar.startingDate
+          eventEndingDate = eventDate Calendar.endingDate
+
+eventDate :: (Calendar.Event -> Maybe Calendar.ULavalTime) -> Calendar.Event -> Time.Day
+eventDate accessor event = Maybe.fromJust $ Time.localDay . Calendar.fromULavalTime <$> accessor event
