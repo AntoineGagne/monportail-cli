@@ -2,7 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Calendar ( Calendar (..)
-                , Metadata (..)
                 , Event (..)
                 , Events (..)
                 , Communication (..)
@@ -131,9 +130,10 @@ data Calendar = Calendar { calendarId :: Text
                          , clientId :: Text
                          , calendarType :: Text
                          , name :: Text
-                         , metadata :: Metadata
+                         , metadata :: Aeson.Value
                          , accessLevel :: Text
                          , changeNumber :: Integer
+                         , informationCorrelationSource :: Maybe Aeson.Value
                          }
                          deriving (Show, Eq)
 
@@ -146,18 +146,7 @@ instance FromJSON Calendar where
         <*> value .: "metadonnees"
         <*> value .: "niveauAccesEffectif"
         <*> value .: "numeroChangement"
-
-data Metadata = Metadata { sessionId :: Maybe Text
-                         , occurenceNumber :: Maybe Text
-                         , sessionCode :: Maybe Text
-                         }
-                         deriving (Show, Eq)
-
-instance FromJSON Metadata where
-    parseJSON = Aeson.withObject "Metadata" $ \value -> Metadata
-        <$> value .:? "idSectionCours"
-        <*> value .:? "numeroOccurence"
-        <*> value .:? "codeSession"
+        <*> value .:? "infoCorrelationSource"
 
 newtype Events = Events { events :: [Event]
                         }

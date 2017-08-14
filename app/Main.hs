@@ -71,11 +71,12 @@ main = do
         diffTime :: Time.NominalDiffTime
         diffTime = 10368000
 
-runMain :: Manager
-        -> Authentication.User
-        -> Time.LocalTime
-        -> Time.LocalTime
-        -> ExceptT Exceptions.MonPortailException IO ()
+runMain
+    :: Manager
+    -> Authentication.User
+    -> Time.LocalTime
+    -> Time.LocalTime
+    -> ExceptT Exceptions.MonPortailException IO ()
 runMain manager user localTime endingTime = do
     (loginDetails, cookies') <- Authentication.getCredentials user manager
     calendar <- Calendar.fetchCalendarDetails manager loginDetails
