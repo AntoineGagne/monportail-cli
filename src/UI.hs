@@ -21,6 +21,11 @@ import qualified Data.Maybe as Maybe
 import qualified Data.Text as Text
 import qualified Data.Time as Time
 
+import Calendar ( sortEvents
+                , eventDate
+                , Event (..)
+                )
+
 import qualified Calendar
 
 
@@ -30,38 +35,33 @@ data View = CalendarView
           deriving (Show)
 
 -- TODO: Refactor this module...
-displayEvents :: [Calendar.Event] -> Brick.Widget n
+displayEvents :: [Event] -> Brick.Widget n
 displayEvents events = let (eventsByStartingDate, eventsLongerThanOneDay) = sortEvents events
                            in normalEventsWidgets eventsByStartingDate
                            <=> buildEventsLongerThanOneDayWidget eventsLongerThanOneDay
     where normalEventsWidgets = Map.foldlWithKey' (\widget day events' -> widget <=> buildCompleteEventWidget day events') Core.emptyWidget
           buildCompleteEventWidget day events' = Core.withBorderStyle BorderStyle.unicode
-                                               $ Border.hBorderWithLabel (Core.txt (" " <> (Text.pack . show) day <> " "))
+                                               $ Border.hBorderWithLabel (Core.txt (" " <> fromShowable day <> " "))
                                               <=> Core.vBox (map buildEventWidget events')
           buildEventsLongerThanOneDayWidget events' = Border.hBorderWithLabel (Core.txt " Others ")
                                                    <=> Core.vBox (map buildEventLongerThanOneDayWidget events')
-          buildEventLongerThanOneDayWidget event' = padBox (Core.txt ( (Text.pack . show . eventDate Calendar.startingDate) event' <> " – " <> (Text.pack . show . eventDate Calendar.endingDate) event')
-                                                                    <+> Core.padLeft (BrickTypes.Pad 4) (Core.txtWrap (Calendar.object event')))
+          buildEventLongerThanOneDayWidget event' = padBox ( Core.txt ( (fromShowable . eventDate Calendar.startingDate) event' 
+                                                                        <> " – "
+                                                                        <> (fromShowable . eventDate Calendar.endingDate) event'
+                                                                      )
+                                                          <+> Core.padLeft (BrickTypes.Pad 4) (Core.txtWrap (Calendar.object event'))
+                                                           )
 
-buildEventWidget :: Calendar.Event -> Brick.Widget n
+buildEventWidget :: Event -> Brick.Widget n
 buildEventWidget event = padBox (Core.txt (formatEventTime event) <+> Core.padLeft (BrickTypes.Pad 4) (Core.txtWrap (Calendar.object event)))
     where
         formatEventTime event
             | Calendar.allDay event = "All day"
             | otherwise = eventTime Calendar.startingDate event <> " – " <> eventTime Calendar.endingDate event
-        eventTime accessor event = Text.pack . show . Maybe.fromJust $ Time.localTimeOfDay . Calendar.fromULavalTime <$> accessor event
+        eventTime accessor event = fromShowable . Maybe.fromJust $ Time.localTimeOfDay . Calendar.fromULavalTime <$> accessor event
 
-sortEvents :: [Calendar.Event] -> (Map.Map Time.Day [Calendar.Event], [Calendar.Event])
-sortEvents events = (eventsByStartingDate, eventsLongerThanOneDay)
-    where eventsByStartingDate = List.foldl' (\m event -> Map.insertWith (++) (eventStartingDate event) (pure event) m) Map.empty filteredEvents
-          filteredEvents = List.sortOn Calendar.startingDate $ filter (compareEventDates (==)) events
-          eventsLongerThanOneDay = filter (compareEventDates (/=)) events
-          compareEventDates compare event = compare (eventStartingDate event) (eventEndingDate event)
-          eventStartingDate = eventDate Calendar.startingDate
-          eventEndingDate = eventDate Calendar.endingDate
-
-eventDate :: (Calendar.Event -> Maybe Calendar.ULavalTime) -> Calendar.Event -> Time.Day
-eventDate accessor event = Maybe.fromJust $ Time.localDay . Calendar.fromULavalTime <$> accessor event
+fromShowable :: Show s => s -> Text.Text
+fromShowable = Text.pack . show
 
 padBox :: Brick.Widget n -> Brick.Widget n
 padBox = Core.padTop (BrickTypes.Pad 1) . Core.padLeftRight 2
