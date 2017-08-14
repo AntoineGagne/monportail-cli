@@ -39,21 +39,22 @@ displayEvents :: [Event] -> Brick.Widget n
 displayEvents events = let (eventsByStartingDate, eventsLongerThanOneDay) = sortEvents events
                            in normalEventsWidgets eventsByStartingDate
                            <=> buildEventsLongerThanOneDayWidget eventsLongerThanOneDay
-    where normalEventsWidgets = Map.foldlWithKey' (\widget day events' -> widget <=> buildCompleteEventWidget day events') Core.emptyWidget
-          buildCompleteEventWidget day events' = Core.withBorderStyle BorderStyle.unicode
-                                               $ Border.hBorderWithLabel (Core.txt (" " <> fromShowable day <> " "))
-                                              <=> Core.vBox (map buildEventWidget events')
-          buildEventsLongerThanOneDayWidget events' = Border.hBorderWithLabel (Core.txt " Others ")
-                                                   <=> Core.vBox (map buildEventLongerThanOneDayWidget events')
-          buildEventLongerThanOneDayWidget event' = padBox ( Core.txt ( (fromShowable . eventDate Calendar.startingDate) event' 
-                                                                        <> " – "
-                                                                        <> (fromShowable . eventDate Calendar.endingDate) event'
-                                                                      )
-                                                          <+> Core.padLeft (BrickTypes.Pad 4) (Core.txtWrap (Calendar.object event'))
-                                                           )
+    where
+        normalEventsWidgets = Map.foldlWithKey' (\widget day events' -> widget <=> buildCompleteEventWidget day events') Core.emptyWidget
+        buildCompleteEventWidget day events' = Core.withBorderStyle BorderStyle.unicode
+                                             $ Border.hBorderWithLabel (Core.txt (" " <> fromShowable day <> " "))
+                                            <=> Core.vBox (map buildEventWidget events')
+        buildEventsLongerThanOneDayWidget events' = Border.hBorderWithLabel (Core.txt " Others ")
+                                                 <=> Core.vBox (map buildEventLongerThanOneDayWidget events')
+        buildEventLongerThanOneDayWidget event' = padBox ( Core.txt ( fromStartingDate event' <> " – " <> fromEndingDate event')
+                                                        <+> padLeft 4 (Core.txtWrap (Calendar.object event'))
+                                                         )
+        fromStartingDate = fromDate Calendar.startingDate
+        fromEndingDate = fromDate Calendar.endingDate
+        fromDate f = fromShowable . eventDate f
 
 buildEventWidget :: Event -> Brick.Widget n
-buildEventWidget event = padBox (Core.txt (formatEventTime event) <+> Core.padLeft (BrickTypes.Pad 4) (Core.txtWrap (Calendar.object event)))
+buildEventWidget event = padBox (Core.txt (formatEventTime event) <+> padLeft 4 (Core.txtWrap (Calendar.object event)))
     where
         formatEventTime event
             | Calendar.allDay event = "All day"
@@ -62,6 +63,9 @@ buildEventWidget event = padBox (Core.txt (formatEventTime event) <+> Core.padLe
 
 fromShowable :: Show s => s -> Text.Text
 fromShowable = Text.pack . show
+
+padLeft :: Int -> Brick.Widget n -> Brick.Widget n
+padLeft n = Core.padLeft (BrickTypes.Pad n)
 
 padBox :: Brick.Widget n -> Brick.Widget n
 padBox = Core.padBottom (BrickTypes.Pad 1) . Core.padLeftRight 2
