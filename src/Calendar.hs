@@ -62,7 +62,6 @@ fetchCalendarDetails
     -> ExceptT Exceptions.MonPortailException IO Calendar
 fetchCalendarDetails manager loginDetails = either throwError pure =<< liftIO (fetchCalendarDetails' manager loginDetails)
 
--- TODO: Refactor this module...
 fetchCalendarDetails'
     :: Manager
     -> Authentication.LoginDetails
@@ -70,9 +69,9 @@ fetchCalendarDetails'
 fetchCalendarDetails' manager loginDetails = do
     request <- createBaseRequest loginDetails queryParameter url
     response <- HttpClient.httpLbs request manager
-    pure $ case Aeson.decode' (HttpClient.responseBody response) of
-        Nothing -> Left . Exceptions.throwUnexpectedResponseError $ Just "Could not retrieve calendar details."
-        Just calendar -> Right calendar
+    pure $ case Aeson.eitherDecode' (HttpClient.responseBody response) of
+        Left message -> Left . Exceptions.throwUnexpectedResponseError $ Just ("Could not retrieve calendar details. Failed with following errors: " ++ message)
+        Right calendar -> Right calendar
     where
         url = baseRoute ++ "/communication/v1/calendriers/operationnel"
         queryParameter :: [(ByteString.ByteString, Maybe ByteString.ByteString)]
