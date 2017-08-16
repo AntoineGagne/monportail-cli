@@ -8,6 +8,7 @@ module Calendar ( Calendar (..)
                 , ULavalTime
                 , fromULavalTime
                 , toULavalTime
+                , fetchAllCalendarsEvents
                 , fetchCalendarDetails
                 , fetchCurrentCalendars
                 , fetchEvents
@@ -55,6 +56,20 @@ import qualified Exceptions
 
 baseRoute :: String
 baseRoute = "https://monportail.ulaval.ca"
+
+fetchAllCalendarsEvents
+    :: Manager
+    -> Authentication.LoginDetails
+    -> Time.LocalTime
+    -> Time.LocalTime
+    -> ExceptT Exceptions.MonPortailException IO [Event]
+fetchAllCalendarsEvents manager loginDetails startingDate endingDate = do
+    calendars <- (:) <$> fetchCalendarDetails manager loginDetails
+                     <*> fetchCurrentCalendars manager loginDetails
+    concat <$> mapM (fetchEvents'' loginDetails) calendars
+    where
+        fetchEvents'' loginDetails calendar = 
+            fetchEvents manager loginDetails calendar startingDate endingDate
 
 fetchCalendarDetails
     :: Manager

@@ -79,10 +79,5 @@ runMain
     -> ExceptT Exceptions.MonPortailException IO ()
 runMain manager user localTime endingTime = do
     (loginDetails, cookies') <- Authentication.getCredentials user manager
-    calendars <- (:) <$> Calendar.fetchCalendarDetails manager loginDetails
-                     <*> Calendar.fetchCurrentCalendars manager loginDetails
-    events <- concat <$> mapM (fetchCalendars loginDetails) calendars
+    events <- Calendar.fetchAllCalendarsEvents manager loginDetails localTime endingTime
     liftIO $ BrickMain.simpleMain (UI.displayEvents events :: Brick.Widget Text.Text)
-        where
-            fetchCalendars loginDetails calendar = 
-                Calendar.fetchEvents manager loginDetails calendar localTime endingTime
