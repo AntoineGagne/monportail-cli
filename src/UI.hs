@@ -68,4 +68,4 @@ padLeft :: Int -> Brick.Widget n -> Brick.Widget n
 padLeft n = Core.padLeft (BrickTypes.Pad n)
 
 padBox :: Brick.Widget n -> Brick.Widget n
-padBox = Core.padBottom (BrickTypes.Pad 1) . Core.padLeftRight 2
+padBox = Core.padTop (BrickTypes.Pad 1) . Core.padBottom (BrickTypes.Pad 1) . Core.padLeftRight 2
